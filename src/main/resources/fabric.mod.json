@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "classkits",
+  "version": "1.1.0",
+  "name": "Class Kits",
+  "description": "Kit-Wahl mit aufwertbaren Block- und Dolchklassen, Combat-Timer und Teams.",
+  "authors": ["Robin"],
+  "environment": "*",
+  "entrypoints": {"main": ["de.robin.classkits.ClassKitsMod"]},
+  "depends": {"fabricloader": ">=0.19.5", "minecraft": "~1.21.11", "java": ">=21", "fabric-api": "*"}
+}

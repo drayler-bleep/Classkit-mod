@@ -1,0 +1,13 @@
+{
+  "display": {
+    "icon": {"id": "classkits:hammer"},
+    "title": {"text": "Maxed Weapon"},
+    "description": {"text": "Hammer-Klasse auf Level 5"},
+    "frame": "challenge",
+    "show_toast": true,
+    "announce_to_chat": false,
+    "hidden": true
+  },
+  "criteria": {"maxed": {"trigger": "minecraft:impossible"}},
+  "requirements": [["maxed"]]
+}

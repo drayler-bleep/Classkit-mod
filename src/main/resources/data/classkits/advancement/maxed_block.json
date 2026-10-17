@@ -1,0 +1,13 @@
+{
+  "display": {
+    "icon": {"id": "classkits:block"},
+    "title": {"text": "Maxed Weapon"},
+    "description": {"text": "Block-Klasse auf Level 5"},
+    "frame": "challenge",
+    "show_toast": true,
+    "announce_to_chat": false,
+    "hidden": true
+  },
+  "criteria": {"maxed": {"trigger": "minecraft:impossible"}},
+  "requirements": [["maxed"]]
+}
