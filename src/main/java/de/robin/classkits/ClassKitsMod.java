@@ -189,9 +189,6 @@ public final class ClassKitsMod implements ModInitializer {
             Cmd.at(server, attacker.getUUID(),
                     "playsound minecraft:entity.player.levelup player @a ~ ~ ~ 0.8 1.2",
                     "particle minecraft:totem_of_undying ~ ~1 ~ 0.4 0.6 0.4 0.3 30");
-            if (e.level() >= KitStore.MAX_LEVEL) {
-                MaxedEffect.play(attacker, e.kit());
-            }
         }
         if (levelUp && e.level() >= KitStore.MAX_LEVEL) {
             MaxedEffect.start(attacker, e.kit());
@@ -255,9 +252,6 @@ public final class ClassKitsMod implements ModInitializer {
                             UUID id = UUID.fromString(StringArgumentType.getString(ctx, "spieler-uuid"));
                             STORE.reset(id);
                             MaxedEffect.revoke(ctx.getSource().getServer(), id);
-                            for (Kit k : Kit.values()) {
-                                Cmd.run(ctx.getSource().getServer(), "advancement revoke " + id + " only " + MaxedEffect.advancementId(k));
-                            }
                             ctx.getSource().sendSuccess(() -> Component.literal("Klasse zurückgesetzt: " + id), true);
                             return 1;
                         }))));

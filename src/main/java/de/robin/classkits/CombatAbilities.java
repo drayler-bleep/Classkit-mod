@@ -393,7 +393,7 @@ public final class CombatAbilities {
             return;
         }
         CustomData data = stack.get(DataComponents.CUSTOM_DATA);
-        if (data != null && data.contains(REPAIRED_KEY)) {
+        if (data != null && data.copyTag().contains(REPAIRED_KEY)) {
             p.sendSystemMessage(Component.literal("Dieses Item wurde schon einmal repariert."));
             return;
         }
@@ -594,7 +594,6 @@ public final class CombatAbilities {
 
         tickAura(server);
         CombatTimer.tick(server);
-        MaxedEffect.tick(server);
         MaxedEffect.tick(server);
         ClassKitsMod.tickRestore(server);
         ClassKitsMod.tickItems(server);
