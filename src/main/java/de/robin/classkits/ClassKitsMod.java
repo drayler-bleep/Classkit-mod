@@ -12,6 +12,7 @@ import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
+import net.minecraft.commands.arguments.EntityArgument;
 import net.minecraft.core.Registry;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -43,7 +44,7 @@ public final class ClassKitsMod implements ModInitializer {
     public static final Item HAMMER = register("hammer",
             new HammerKitItem(itemProperties("hammer", "Hammer").attributes(HammerKitItem.baseAttributes())));
 
-    private static final KitStore STORE = new KitStore();
+    static final KitStore STORE = new KitStore();
     /** Spieler, deren Waffen beim Tod entfernt wurden und wieder zurueckkommen muessen. */
     private static final Set<UUID> pendingRestore = new HashSet<>();
     /** Frisch gespawnte Kit-Waffen als Item-Entity (z.B. durch Q-Taste); werden zurueckgegeben. */
@@ -59,6 +60,7 @@ public final class ClassKitsMod implements ModInitializer {
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> server.execute(() -> {
             ServerPlayer p = handler.player;
             TeamManager.updateName(p);
+            LevelTag.update(server, p);
             if (STORE.get(p.getUUID()) == null) {
                 p.sendSystemMessage(Component.literal("Wähle deine Klasse mit /kit").withStyle(ChatFormatting.YELLOW));
             }
@@ -183,6 +185,7 @@ public final class ClassKitsMod implements ModInitializer {
         MinecraftServer server = attacker.level().getServer();
         if (levelUp) {
             KitItems.refresh(attacker, e);
+            LevelTag.update(server, attacker);
             CombatAbilities.startAura(attacker);
             attacker.sendSystemMessage(Component.literal("Level-Up! " + e.kit().displayName() + " ist jetzt Level "
                     + e.level() + ": " + e.kit().unlock(e.level())).withStyle(ChatFormatting.GREEN));
@@ -207,6 +210,7 @@ public final class ClassKitsMod implements ModInitializer {
         }
         p.getInventory().add(KitItems.create(kit, 1));
         MinecraftServer server = p.level().getServer();
+        LevelTag.update(server, p);
         Cmd.title(server, p.getUUID(), kit.shortName(), kit.color());
         Cmd.at(server, p.getUUID(), "playsound minecraft:ui.toast.challenge_complete player @s ~ ~ ~ 0.8 1.2");
         p.sendSystemMessage(Component.literal("Du hast die " + kit.displayName() + " gewählt!").withStyle(ChatFormatting.GOLD));
@@ -246,13 +250,18 @@ public final class ClassKitsMod implements ModInitializer {
                             : e.kit().displayName() + " | Level " + e.level() + " | Kills: " + e.kills()), false);
                     return 1;
                 }))
-                // nur von der Server-Konsole (oder Command-Bloecken)
-                .then(Commands.literal("reset").requires(src -> src.getEntity() == null)
-                        .then(Commands.argument("spieler-uuid", StringArgumentType.word()).executes(ctx -> {
-                            UUID id = UUID.fromString(StringArgumentType.getString(ctx, "spieler-uuid"));
+                // /kit reset <Name>: nur fuer Operatoren (und die Konsole)
+                .then(Commands.literal("reset").requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
+                        .then(Commands.argument("spieler", EntityArgument.player()).executes(ctx -> {
+                            ServerPlayer target = EntityArgument.getPlayer(ctx, "spieler");
+                            UUID id = target.getUUID();
                             STORE.reset(id);
                             MaxedEffect.revoke(ctx.getSource().getServer(), id);
-                            ctx.getSource().sendSuccess(() -> Component.literal("Klasse zurückgesetzt: " + id), true);
+                            LevelTag.clear(ctx.getSource().getServer(), target);
+                            target.sendSystemMessage(Component.literal("Deine Klasse wurde zurückgesetzt. Wähle neu mit /kit.")
+                                    .withStyle(ChatFormatting.YELLOW));
+                            ctx.getSource().sendSuccess(() -> Component.literal("Klasse zurückgesetzt: "
+                                    + target.getName().getString()), true);
                             return 1;
                         }))));
     }
