@@ -1,0 +1,50 @@
+{
+  "radar_scan": {
+    "sounds": [
+      {
+        "name": "classkits:radar_scan",
+        "stream": false
+      }
+    ]
+  },
+  "coin_flip": {
+    "sounds": [
+      {
+        "name": "classkits:coin_flip",
+        "stream": false
+      }
+    ]
+  },
+  "chicken_size": {
+    "sounds": [
+      {
+        "name": "classkits:chicken_size",
+        "stream": false
+      }
+    ]
+  },
+  "freeze_ball": {
+    "sounds": [
+      {
+        "name": "classkits:freeze_ball",
+        "stream": false
+      }
+    ]
+  },
+  "phoenix_claw": {
+    "sounds": [
+      {
+        "name": "classkits:phoenix_claw",
+        "stream": false
+      }
+    ]
+  },
+  "level_certificate": {
+    "sounds": [
+      {
+        "name": "classkits:level_certificate",
+        "stream": false
+      }
+    ]
+  }
+}

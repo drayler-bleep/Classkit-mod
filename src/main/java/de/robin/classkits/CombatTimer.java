@@ -60,13 +60,15 @@ public final class CombatTimer {
                 continue;
             }
             timers.put(id, left);
-            if (left % 10 == 0) {
-                Cmd.actionbar(server, id, "Combat-Timer: " + format(left), "red");
-            }
         }
     }
 
-    private static String format(int ticks) {
+    /** Verbleibende Kampf-Ticks (0, wenn nicht im Kampf). */
+    public static int ticksLeft(UUID id) {
+        return timers.getOrDefault(id, 0);
+    }
+
+    public static String format(int ticks) {
         int seconds = (ticks + 19) / 20;
         return (seconds / 60) + ":" + String.format("%02d", seconds % 60);
     }

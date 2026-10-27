@@ -133,6 +133,24 @@ public final class CombatAbilities {
         return e != null && e.kit() == kit ? e.level() : 1;
     }
 
+    /** Verbleibende Ticks des Reparatur-Cooldowns (Hammer). */
+    public static int repairLeft(UUID id) {
+        Long until = repairCd.get(id);
+        return until == null ? 0 : (int) Math.max(0L, until - tickCounter);
+    }
+
+    /** Verbleibende Ticks des Blitz-Cooldowns (Hammer). */
+    public static int boltLeft(UUID id) {
+        Long until = boltCd.get(id);
+        return until == null ? 0 : (int) Math.max(0L, until - tickCounter);
+    }
+
+    /** Friert einen Spieler fuer die angegebene Zeit ein (Slowness 255 + Stun-Status). */
+    public static void freeze(ServerPlayer target, int ticks, ServerPlayer source) {
+        target.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, ticks, 255, false, true, true), source);
+        stunned.put(target.getUUID(), ticks);
+    }
+
     private static boolean isStunned(Entity e) {
         return stunned.getOrDefault(e.getUUID(), 0) > 0;
     }
@@ -594,7 +612,10 @@ public final class CombatAbilities {
 
         tickAura(server);
         CombatTimer.tick(server);
+        CooldownHud.tick(server);
         MaxedEffect.tick(server);
+        AirDrop.tick(server);
+        KillStreak.tick(server);
         ClassKitsMod.tickRestore(server);
         ClassKitsMod.tickItems(server);
     }

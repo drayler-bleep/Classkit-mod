@@ -55,6 +55,7 @@ public final class ClassKitsMod implements ModInitializer {
         STORE.load(FabricLoader.getInstance().getConfigDir().resolve("classkits-players.txt"));
         TeamManager.load(FabricLoader.getInstance().getConfigDir().resolve("classkits-teams.txt"));
 
+        AirDropItems.init();
         CombatAbilities.register();
 
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> server.execute(() -> {
@@ -76,6 +77,9 @@ public final class ClassKitsMod implements ModInitializer {
 
         // Kit-Waffen sollen beim Tod nicht gedroppt werden (sonst gaebe es sie nur einmal)
         ServerLivingEntityEvents.ALLOW_DEATH.register((entity, source, amount) -> {
+            if (entity instanceof ServerPlayer pp && AirDrop.tryPhoenix(pp, source)) {
+                return false;
+            }
             if (entity instanceof ServerPlayer p && STORE.get(p.getUUID()) != null) {
                 Inventory inv = p.getInventory();
                 boolean removed = false;
@@ -95,6 +99,8 @@ public final class ClassKitsMod implements ModInitializer {
             if (entity instanceof ServerPlayer victim) {
                 CombatTimer.clear(victim.getUUID());
                 CombatAbilities.onDeath(victim.getUUID());
+                AirDrop.onDeath(victim.getUUID());
+                KillStreak.reset(victim.getUUID());
                 Entity killer = source.getEntity();
                 if (killer instanceof ServerPlayer attacker && attacker != victim) {
                     awardKill(attacker);
@@ -115,6 +121,9 @@ public final class ClassKitsMod implements ModInitializer {
 
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
             registerKitCommand(dispatcher);
+            AirDrop.registerCommand(dispatcher);
+            KillStreak.registerCommand(dispatcher);
+            CooldownHud.registerCommand(dispatcher);
             TeamCommand.register(dispatcher);
         });
     }
@@ -177,24 +186,31 @@ public final class ClassKitsMod implements ModInitializer {
         }
     }
 
+    /** Effekte und Meldungen bei einem Level-Aufstieg (Kill oder Zertifikat). */
+    public static void onLevelUp(ServerPlayer attacker, KitStore.Entry e) {
+        MinecraftServer server = attacker.level().getServer();
+        KitItems.refresh(attacker, e);
+        LevelTag.update(server, attacker);
+        CombatAbilities.startAura(attacker);
+        attacker.sendSystemMessage(Component.literal("Level-Up! " + e.kit().displayName() + " ist jetzt Level "
+                + e.level() + ": " + e.kit().unlock(e.level())).withStyle(ChatFormatting.GREEN));
+        Cmd.at(server, attacker.getUUID(),
+                "playsound minecraft:entity.player.levelup player @a ~ ~ ~ 0.8 1.2",
+                "particle minecraft:totem_of_undying ~ ~1 ~ 0.4 0.6 0.4 0.3 30");
+        if (e.level() >= KitStore.MAX_LEVEL) {
+            MaxedEffect.start(attacker, e.kit());
+        }
+    }
+
     /** Ein Spieler-Kill: Level steigt, ab Dolch-Level 4 volle Heilung. */
     public static void awardKill(ServerPlayer attacker) {
+        KillStreak.add(attacker);
         boolean levelUp = STORE.addKill(attacker.getUUID());
         KitStore.Entry e = STORE.get(attacker.getUUID());
         if (e == null) return;
         MinecraftServer server = attacker.level().getServer();
         if (levelUp) {
-            KitItems.refresh(attacker, e);
-            LevelTag.update(server, attacker);
-            CombatAbilities.startAura(attacker);
-            attacker.sendSystemMessage(Component.literal("Level-Up! " + e.kit().displayName() + " ist jetzt Level "
-                    + e.level() + ": " + e.kit().unlock(e.level())).withStyle(ChatFormatting.GREEN));
-            Cmd.at(server, attacker.getUUID(),
-                    "playsound minecraft:entity.player.levelup player @a ~ ~ ~ 0.8 1.2",
-                    "particle minecraft:totem_of_undying ~ ~1 ~ 0.4 0.6 0.4 0.3 30");
-        }
-        if (levelUp && e.level() >= KitStore.MAX_LEVEL) {
-            MaxedEffect.start(attacker, e.kit());
+            onLevelUp(attacker, e);
         }
         if (e.kit() == Kit.DAGGER && e.level() >= 4) {
             attacker.setHealth(attacker.getMaxHealth());
@@ -266,11 +282,11 @@ public final class ClassKitsMod implements ModInitializer {
                         }))));
     }
 
-    private static Item register(String name, Item item) {
+    static Item register(String name, Item item) {
         return Registry.register(BuiltInRegistries.ITEM, Identifier.fromNamespaceAndPath(MOD_ID, name), item);
     }
 
-    private static Item.Properties itemProperties(String name, String displayName) {
+    static Item.Properties itemProperties(String name, String displayName) {
         Identifier id = Identifier.fromNamespaceAndPath(MOD_ID, name);
         return new Item.Properties().stacksTo(1)
                 .component(DataComponents.ITEM_NAME, Component.literal(displayName))
