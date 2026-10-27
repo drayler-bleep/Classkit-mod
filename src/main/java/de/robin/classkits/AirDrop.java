@@ -145,7 +145,7 @@ public final class AirDrop {
     }
 
     /** Sucht einen Platz in der Weltgrenze und laesst dort einen Air Drop vom Himmel schweben. */
-    public static boolean spawnDrop(MinecraftServer server) {
+    public static BlockPos spawnDrop(MinecraftServer server) {
         ServerLevel level = server.overworld();
         RandomSource r = level.getRandom();
         for (int attempt = 0; attempt < 25; attempt++) {
@@ -156,7 +156,7 @@ public final class AirDrop {
             int minZ = (int) Math.ceil(border.getMinZ()) + 10;
             int maxZ = (int) Math.floor(border.getMaxZ()) - 10;
             if (maxX <= minX || maxZ <= minZ) {
-                return false;
+                return null;
             }
             int x = minX + r.nextInt(maxX - minX + 1);
             int z = minZ + r.nextInt(maxZ - minZ + 1);
@@ -178,12 +178,16 @@ public final class AirDrop {
                     + "\"classkits:air_drop\"}},transformation:{left_rotation:[0f,0f,0f,1f],right_rotation:[0f,0f,0f,1f],"
                     + "translation:[0f,0f,0f],scale:[3f,3f,3f]},teleport_duration:10,view_range:4f,"
                     + "Tags:[\"classkits_airdrop\",\"" + tagOf(f) + "\"]}");
-            return true;
+            server.getPlayerList().broadcastSystemMessage(
+                    Component.literal("An air drop is falling from the sky and lands in 50 seconds near x: " + x
+                            + " z: " + z)
+                            .withStyle(ChatFormatting.RED, ChatFormatting.BOLD), false);
+            return pos;
         }
-        return false;
+        return null;
     }
 
-    /** Laesst alle Fallschirme ein Stueck sinken (alle 10 Ticks 1 Block). */
+    /** Laesst alle Fallschirme ein Stueck sinken (alle 10 Ticks 1 Block, also 100 Bloecke in 50 Sekunden). */
     private static void tickFalling(MinecraftServer server) {
         if (falling.isEmpty() || tickCounter % 10 != 0) {
             return;
@@ -196,6 +200,11 @@ public final class AirDrop {
             } else {
                 Cmd.run(server, "execute in minecraft:overworld as @e[tag=" + tagOf(f)
                         + ",limit=1] run tp @s " + (f.x + 0.5) + " " + f.y + " " + (f.z + 0.5));
+                // Rauchspur, damit man den Drop auch von weitem sieht
+                Cmd.run(server, "execute in minecraft:overworld run particle minecraft:campfire_cosy_smoke "
+                        + (f.x + 0.5) + " " + (f.y + 3.5) + " " + (f.z + 0.5) + " 0.3 0.2 0.3 0.01 3 force");
+                Cmd.run(server, "execute in minecraft:overworld run particle minecraft:end_rod "
+                        + (f.x + 0.5) + " " + (f.y + 0.5) + " " + (f.z + 0.5) + " 0.4 0.4 0.4 0.01 2 force");
             }
         }
     }
@@ -415,11 +424,12 @@ public final class AirDrop {
         dispatcher.register(Commands.literal("airdrop")
                 .requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
                 .then(Commands.literal("spawn").executes(ctx -> {
-                    boolean ok = spawnDrop(ctx.getSource().getServer());
-                    if (!ok) {
+                    BlockPos where = spawnDrop(ctx.getSource().getServer());
+                    if (where == null) {
                         ctx.getSource().sendFailure(Component.literal("Kein passender Platz gefunden, versuch es nochmal."));
+                        return 0;
                     }
-                    return ok ? 1 : 0;
+                    return 1;
                 }))
                 .then(Commands.literal("delete").executes(ctx -> {
                     int n = deleteDrops(ctx.getSource().getServer());
