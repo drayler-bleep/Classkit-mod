@@ -33,7 +33,6 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
-import net.minecraft.world.level.border.WorldBorder;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.phys.EntityHitResult;
 
@@ -50,6 +49,8 @@ public final class AirDrop {
 
     /** 120 Minuten in Ticks. */
     private static final int INTERVAL_TICKS = 120 * 60 * 20;
+    /** Air Drops landen im Umkreis dieses Radius um (0, 0). */
+    private static final int RADIUS = 130;
     private static final int RADAR_RANGE = 60;
     private static final int RADAR_GLOW_TICKS = 15 * 20;
     private static final int CHICKEN_TICKS = 60 * 20;
@@ -149,17 +150,14 @@ public final class AirDrop {
         ServerLevel level = server.overworld();
         RandomSource r = level.getRandom();
         for (int attempt = 0; attempt < 25; attempt++) {
-            // innerhalb der Weltgrenze bleiben (mit 10 Bloecken Abstand zum Rand)
-            WorldBorder border = level.getWorldBorder();
-            int minX = (int) Math.ceil(border.getMinX()) + 10;
-            int maxX = (int) Math.floor(border.getMaxX()) - 10;
-            int minZ = (int) Math.ceil(border.getMinZ()) + 10;
-            int maxZ = (int) Math.floor(border.getMaxZ()) - 10;
-            if (maxX <= minX || maxZ <= minZ) {
-                return null;
+            // zufaelliger Punkt im Umkreis von 130 Bloecken um (0, 0)
+            double angle = r.nextDouble() * Math.PI * 2.0;
+            double dist = Math.sqrt(r.nextDouble()) * RADIUS;
+            int x = (int) Math.round(Math.cos(angle) * dist);
+            int z = (int) Math.round(Math.sin(angle) * dist);
+            if (!level.getWorldBorder().isWithinBounds(x, z)) {
+                continue; // nur falls die Border kleiner als der Umkreis ist
             }
-            int x = minX + r.nextInt(maxX - minX + 1);
-            int z = minZ + r.nextInt(maxZ - minZ + 1);
             level.getChunk(x >> 4, z >> 4);
             int y = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
             BlockPos pos = new BlockPos(x, y, z);
