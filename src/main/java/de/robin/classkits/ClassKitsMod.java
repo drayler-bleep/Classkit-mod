@@ -54,12 +54,23 @@ public final class ClassKitsMod implements ModInitializer {
     public void onInitialize() {
         STORE.load(FabricLoader.getInstance().getConfigDir().resolve("classkits-players.txt"));
         TeamManager.load(FabricLoader.getInstance().getConfigDir().resolve("classkits-teams.txt"));
+        TempBan.load(FabricLoader.getInstance().getConfigDir().resolve("classkits-bans.txt"));
+        PlayTime.load(FabricLoader.getInstance().getConfigDir().resolve("classkits-playtime.txt"));
+        FirstBlood.load(FabricLoader.getInstance().getConfigDir().resolve("classkits-firstblood.txt"));
 
         AirDropItems.init();
+        BackpackItem.init();
+        PlayTime.register();
         CombatAbilities.register();
 
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> server.execute(() -> {
             ServerPlayer p = handler.player;
+            long banLeft = TempBan.remaining(p.getUUID());
+            if (banLeft > 0) {
+                p.connection.disconnect(TempBan.message(banLeft));
+                return;
+            }
+            if (PlayTime.blockOnJoin(p)) return;
             TeamManager.updateName(p);
             LevelTag.update(server, p);
             if (STORE.get(p.getUUID()) == null) {
@@ -103,7 +114,7 @@ public final class ClassKitsMod implements ModInitializer {
                 KillStreak.reset(victim.getUUID());
                 Entity killer = source.getEntity();
                 if (killer instanceof ServerPlayer attacker && attacker != victim) {
-                    awardKill(attacker);
+                    onPlayerKill(attacker, victim, source);
                 }
             }
         });
@@ -125,6 +136,9 @@ public final class ClassKitsMod implements ModInitializer {
             KillStreak.registerCommand(dispatcher);
             CooldownHud.registerCommand(dispatcher);
             TeamCommand.register(dispatcher);
+            TempBan.registerCommand(dispatcher);
+            PlayTime.registerCommand(dispatcher);
+            StatsMenu.registerCommand(dispatcher);
         });
     }
 
@@ -203,9 +217,32 @@ public final class ClassKitsMod implements ModInitializer {
     }
 
     /** Ein Spieler-Kill: Level steigt, ab Dolch-Level 4 volle Heilung. */
-    public static void awardKill(ServerPlayer attacker) {
+    /** Blitz am Todesort; Teamkill = 24 h Bann statt Level. */
+    public static void onPlayerKill(ServerPlayer attacker, ServerPlayer victim,
+                                    net.minecraft.world.damagesource.DamageSource source) {
+        net.minecraft.server.level.ServerLevel sl = (net.minecraft.server.level.ServerLevel) victim.level();
+        net.minecraft.world.entity.LightningBolt bolt = net.minecraft.world.entity.EntityType.LIGHTNING_BOLT
+                .create(sl, net.minecraft.world.entity.EntitySpawnReason.TRIGGERED);
+        if (bolt != null) {
+            bolt.setPos(victim.getX(), victim.getY(), victim.getZ());
+            bolt.setVisualOnly(true);
+            sl.addFreshEntity(bolt);
+        }
+        FirstBlood.trigger(sl.getServer(), attacker, victim, source);
+        if (TeamManager.sameTeam(attacker, victim)) {
+            MinecraftServer server = sl.getServer();
+            server.getPlayerList().broadcastSystemMessage(
+                    Component.literal(attacker.getName().getString() + " hat ein Teammitglied getötet und ist für 24 Stunden gebannt!")
+                            .withStyle(ChatFormatting.RED, ChatFormatting.BOLD), false);
+            TempBan.banDay(attacker);
+            return;
+        }
+        awardKill(attacker, victim.getUUID());
+    }
+
+    public static void awardKill(ServerPlayer attacker, java.util.UUID victim) {
         KillStreak.add(attacker);
-        boolean levelUp = STORE.addKill(attacker.getUUID());
+        boolean levelUp = STORE.addKill(attacker.getUUID(), victim);
         KitStore.Entry e = STORE.get(attacker.getUUID());
         if (e == null) return;
         MinecraftServer server = attacker.level().getServer();

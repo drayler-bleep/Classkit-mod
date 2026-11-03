@@ -24,6 +24,8 @@ public final class KitStore {
     }
 
     private final Map<UUID, Entry> entries = new HashMap<>();
+    /** Pro Spieler: welche Gegner er schon getoetet hat (zaehlen nur einmal fuers Level). */
+    private final Map<UUID, java.util.Set<UUID>> killed = new HashMap<>();
     private Path file;
 
     public void load(Path path) {
@@ -34,7 +36,13 @@ public final class KitStore {
                 String[] p = line.trim().split(";");
                 if (p.length < 3) continue;
                 try {
-                    entries.put(UUID.fromString(p[0]), new Entry(Kit.valueOf(p[1]), Integer.parseInt(p[2])));
+                    UUID id = UUID.fromString(p[0]);
+                    entries.put(id, new Entry(Kit.valueOf(p[1]), Integer.parseInt(p[2])));
+                    if (p.length >= 4 && !p[3].isBlank()) {
+                        java.util.Set<UUID> set = new java.util.HashSet<>();
+                        for (String v : p[3].split(",")) set.add(UUID.fromString(v));
+                        killed.put(id, set);
+                    }
                 } catch (IllegalArgumentException ignored) {
                     // kaputte Zeile ueberspringen
                 }
@@ -48,7 +56,10 @@ public final class KitStore {
         if (file == null) return;
         List<String> lines = new ArrayList<>();
         for (Map.Entry<UUID, Entry> e : entries.entrySet()) {
-            lines.add(e.getKey() + ";" + e.getValue().kit().name() + ";" + e.getValue().kills());
+            java.util.Set<UUID> k = killed.getOrDefault(e.getKey(), java.util.Set.of());
+            StringBuilder sb = new StringBuilder();
+            for (UUID v : k) sb.append(sb.length() > 0 ? "," : "").append(v);
+            lines.add(e.getKey() + ";" + e.getValue().kit().name() + ";" + e.getValue().kills() + ";" + sb);
         }
         try {
             Files.createDirectories(file.getParent());
@@ -78,7 +89,18 @@ public final class KitStore {
         return true;
     }
 
+    /** Wie addKill, aber nur wenn dieser Gegner noch nie von diesem Spieler getoetet wurde. */
+    public boolean addKill(UUID id, UUID victim) {
+        Entry e = entries.get(id);
+        if (e == null) return false;
+        if (!killed.computeIfAbsent(id, k -> new java.util.HashSet<>()).add(victim)) return false;
+        boolean up = addKill(id);
+        if (!up) save();
+        return up;
+    }
+
     public void reset(UUID id) {
+        killed.remove(id);
         entries.remove(id);
         save();
     }

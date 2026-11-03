@@ -84,7 +84,7 @@ public final class CombatTimer {
         if (oppId != null) {
             ServerPlayer opp = server.getPlayerList().getPlayer(oppId);
             if (opp != null && opp != p) {
-                ClassKitsMod.awardKill(opp);
+                ClassKitsMod.onPlayerKill(opp, p, null);
             }
         }
         ServerLevel level = (ServerLevel) p.level();

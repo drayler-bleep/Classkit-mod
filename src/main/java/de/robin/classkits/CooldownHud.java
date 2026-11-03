@@ -40,7 +40,7 @@ public final class CooldownHud {
     // ------------------------------------------------------------------ Tick
 
     public static void tick(MinecraftServer server) {
-        if (++tickCounter % 10 != 0) {
+        if (++tickCounter % 5 != 0) {
             return;
         }
         for (ServerPlayer p : new ArrayList<>(server.getPlayerList().getPlayers())) {
@@ -65,14 +65,14 @@ public final class CooldownHud {
         String cdJson = cds.isEmpty() ? null : cdComponent(cds);
 
         // Actionbar: Combat-Timer, im Hotbar-Modus zusammen mit den Cooldowns
-        List<String> bar = new ArrayList<>();
-        if (combatJson != null) bar.add(combatJson);
-        if (pos == Pos.HOTBAR && cdJson != null) {
-            if (!bar.isEmpty()) bar.add("{\"text\":\"   |   \",\"color\":\"gray\"}");
-            bar.add(cdJson);
+        List<String> parts = new ArrayList<>();
+        if (combatJson != null) parts.add(combatJson);
+        if (pos == Pos.HOTBAR) {
+            if (!parts.isEmpty() && !cds.isEmpty()) parts.add("{\"text\":\"   |   \",\"color\":\"gray\"}");
+            parts.addAll(cdParts(cds));
         }
-        if (!bar.isEmpty()) {
-            Cmd.run(server, "title " + id + " actionbar [" + String.join(",", bar) + "]");
+        if (!parts.isEmpty()) {
+            Cmd.run(server, "title " + id + " actionbar " + wrap(parts));
         }
 
         // Bossbar (oben)
@@ -102,14 +102,23 @@ public final class CooldownHud {
         }
     }
 
-    private static String cdComponent(List<Cd> cds) {
+    private static List<String> cdParts(List<Cd> cds) {
         List<String> parts = new ArrayList<>();
         for (Cd c : cds) {
             if (!parts.isEmpty()) parts.add("{\"text\":\"  \",\"color\":\"gray\"}");
             int sec = (c.left() + 19) / 20;
             parts.add("{\"text\":\"" + c.name() + ": " + sec + " s\",\"color\":\"yellow\"}");
         }
-        return "[" + String.join(",", parts) + "]";
+        return parts;
+    }
+
+    private static String cdComponent(List<Cd> cds) {
+        return wrap(cdParts(cds));
+    }
+
+    /** Ein Text-Objekt mit leerem Text und den Teilen als "extra". */
+    private static String wrap(List<String> parts) {
+        return "{\"text\":\"\",\"extra\":[" + String.join(",", parts) + "]}";
     }
 
     // ------------------------------------------------------------------ Cooldowns
@@ -122,12 +131,12 @@ public final class CooldownHud {
         }
         switch (e.kit()) {
             case BLOCK:
-                add(out, "Block", vanilla(p, ClassKitsMod.BLOCK, CombatAbilities.BLOCK_COOLDOWN_TICKS),
+                add(out, "Block", CombatAbilities.blockLeft(p.getUUID()),
                         CombatAbilities.BLOCK_COOLDOWN_TICKS);
                 break;
             case DAGGER:
                 if (e.level() >= 2) {
-                    add(out, "Dash", vanilla(p, ClassKitsMod.DAGGER, CombatAbilities.DASH_COOLDOWN_TICKS),
+                    add(out, "Dash", CombatAbilities.dashLeft(p.getUUID()),
                             CombatAbilities.DASH_COOLDOWN_TICKS);
                 }
                 break;

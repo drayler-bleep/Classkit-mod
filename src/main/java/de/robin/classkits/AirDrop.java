@@ -47,9 +47,7 @@ public final class AirDrop {
     private AirDrop() {
     }
 
-    /** 120 Minuten in Ticks. */
-    private static final int INTERVAL_TICKS = 120 * 60 * 20;
-    /** Air Drops landen im Umkreis dieses Radius um (0, 0). */
+        /** Air Drops landen im Umkreis dieses Radius um (0, 0). */
     private static final int RADIUS = 130;
     private static final int RADAR_RANGE = 60;
     private static final int RADAR_GLOW_TICKS = 15 * 20;
@@ -57,7 +55,9 @@ public final class AirDrop {
     private static final int FREEZE_BALL_TICKS = 3 * 20;
     private static final Identifier CHICKEN_ID = Identifier.fromNamespaceAndPath(ClassKitsMod.MOD_ID, "chicken_size");
 
-    private static int timer = INTERVAL_TICKS;
+    private static final java.time.ZoneId ZONE = java.time.ZoneId.of("Europe/Berlin");
+    private static final int INTERVAL_HOURS = 3;
+    private static long lastSlot = -1;
     private static int tickCounter = 0;
     private static final Map<UUID, Integer> chicken = new HashMap<>();
     private static final List<Active> active = new ArrayList<>();
@@ -69,9 +69,16 @@ public final class AirDrop {
 
     public static void tick(MinecraftServer server) {
         tickCounter++;
-        if (--timer <= 0) {
-            timer = INTERVAL_TICKS;
-            spawnDrop(server);
+        // Feste Uhrzeiten: 0, 3, 6, 9, 12, 15, 18, 21 Uhr (Europe/Berlin)
+        if (tickCounter % 20 == 0) {
+            long slot = java.time.ZonedDateTime.now(ZONE).toLocalDateTime()
+                    .atZone(java.time.ZoneOffset.UTC).toEpochSecond() / (INTERVAL_HOURS * 3600L);
+            if (lastSlot < 0) {
+                lastSlot = slot;
+            } else if (slot != lastSlot) {
+                lastSlot = slot;
+                spawnDrop(server);
+            }
         }
 
         // Huehner-Groesse ablaufen lassen

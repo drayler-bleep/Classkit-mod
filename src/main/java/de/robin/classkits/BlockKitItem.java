@@ -21,6 +21,7 @@ public final class BlockKitItem extends Item {
                 return InteractionResult.FAIL;
             }
             player.getCooldowns().addCooldown(stack, CombatAbilities.BLOCK_COOLDOWN_TICKS);
+            CombatAbilities.markBlockCooldown(player.getUUID());
             CombatAbilities.startGuard(sp);
         }
         return InteractionResult.SUCCESS;

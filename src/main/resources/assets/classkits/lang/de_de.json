@@ -2,5 +2,12 @@
   "item.classkits.block": "Block",
   "item.classkits.dagger": "Dolch",
   "item.classkits.hammer": "Hammer",
+  "item.classkits.radar_scanner": "Radar-Scanner",
+  "item.classkits.coinflip": "Coinflip",
+  "item.classkits.chicken_size": "Hühner-Größe",
+  "item.classkits.freeze_ball": "Freeze-Ball",
+  "item.classkits.phoenix_claw": "Phönix-Kralle",
+  "item.classkits.level_certificate": "Level-Up-Zertifikat",
+  "item.classkits.backpack": "Rucksack",
   "chat.type.advancement.challenge": "%s hat %s erreicht"
 }

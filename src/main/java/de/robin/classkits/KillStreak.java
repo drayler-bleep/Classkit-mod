@@ -60,35 +60,36 @@ public final class KillStreak {
                 continue;
             }
             int n = en.getValue();
-            String particle;
-            String delta;
-            int count;
             if (n >= 5) {
+                // Ab 5 Kills: drei Toene der Waffenfarbe (dunkel, normal, hell)
                 KitStore.Entry e = ClassKitsMod.store().get(p.getUUID());
-                particle = dust(e == null ? null : e.kit());
-                delta = "0.25 0.4 0.25";
-                count = 6;
+                for (String d : dusts(e == null ? null : e.kit())) {
+                    emit(server, p, d, "0.25 0.4 0.25", 2);
+                }
             } else if (n >= 3) {
-                particle = "minecraft:angry_villager";
-                delta = "0.25 0.3 0.25";
-                count = 1;
+                emit(server, p, "minecraft:angry_villager", "0.25 0.3 0.25", 1);
             } else {
-                particle = "minecraft:happy_villager";
-                delta = "0.25 0.4 0.25";
-                count = 3;
+                emit(server, p, "minecraft:happy_villager", "0.25 0.4 0.25", 3);
             }
-            Cmd.run(server, "execute as " + p.getUUID() + " at " + p.getUUID()
-                    + " run execute positioned ^ ^1 ^-0.7 run particle " + particle + " ~ ~ ~ " + delta
-                    + " 0 " + count + " normal @a[tag=!" + OFF_TAG + "]");
         }
     }
 
-    /** Dolch rot, Block (Schild) blau, Hammer gelb. */
-    private static String dust(Kit kit) {
-        if (kit == Kit.DAGGER) return "minecraft:dust{color:[1.0,0.1,0.1],scale:1.0}";
-        if (kit == Kit.BLOCK) return "minecraft:dust{color:[0.2,0.4,1.0],scale:1.0}";
-        if (kit == Kit.HAMMER) return "minecraft:dust{color:[1.0,0.9,0.1],scale:1.0}";
-        return "minecraft:dust{color:[1.0,1.0,1.0],scale:1.0}";
+    private static void emit(MinecraftServer server, ServerPlayer p, String particle, String delta, int count) {
+        Cmd.run(server, "execute as " + p.getUUID() + " at " + p.getUUID()
+                + " run execute positioned ^ ^1 ^-0.7 run particle " + particle + " ~ ~ ~ " + delta
+                + " 0 " + count + " normal @a[tag=!" + OFF_TAG + "]");
+    }
+
+    private static String dust(double r, double g, double b) {
+        return "minecraft:dust{color:[" + r + "," + g + "," + b + "],scale:1.0}";
+    }
+
+    /** Dolch rot, Block (Schild) blau, Hammer gelb, jeweils dunkel, normal und hell. */
+    private static String[] dusts(Kit kit) {
+        if (kit == Kit.DAGGER) return new String[] {dust(0.5, 0.0, 0.0), dust(1.0, 0.1, 0.1), dust(1.0, 0.55, 0.55)};
+        if (kit == Kit.BLOCK) return new String[] {dust(0.05, 0.15, 0.6), dust(0.2, 0.4, 1.0), dust(0.6, 0.8, 1.0)};
+        if (kit == Kit.HAMMER) return new String[] {dust(0.7, 0.55, 0.0), dust(1.0, 0.9, 0.1), dust(1.0, 1.0, 0.6)};
+        return new String[] {dust(0.5, 0.5, 0.5), dust(0.8, 0.8, 0.8), dust(1.0, 1.0, 1.0)};
     }
 
     public static void registerCommand(CommandDispatcher<CommandSourceStack> dispatcher) {

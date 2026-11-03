@@ -272,7 +272,63 @@ public final class CombatAbilities {
         return true;
     }
 
-    /** Dash in Blickrichtung (horizontal, auch im Lauf oder Sprung), maximal 8 Bloecke. Gibt true zurueck, wenn der Dash stattfand. */
+    /** Laufender Dash eines Spielers. */
+    private static final class DashState {
+        final double hx;
+        final double hz;
+        final double startX;
+        final double startZ;
+        int ticks = 0;
+
+        DashState(double hx, double hz, double startX, double startZ) {
+            this.hx = hx;
+            this.hz = hz;
+            this.startX = startX;
+            this.startZ = startZ;
+        }
+    }
+
+    private static final Map<UUID, DashState> dashing = new HashMap<>();
+    private static final Map<UUID, Long> dashCd = new HashMap<>();
+    private static final Map<UUID, Long> blockCd = new HashMap<>();
+    /** Dash-Tempo in Bloecken pro Tick (8 Bloecke dauern so ca. 5 Ticks). */
+    private static final double DASH_SPEED = 1.6;
+    private static final int DASH_MAX_TICKS = 12;
+
+    public static void markDashCooldown(UUID id) {
+        dashCd.put(id, tickCounter + DASH_COOLDOWN_TICKS);
+    }
+
+    public static void markBlockCooldown(UUID id) {
+        blockCd.put(id, tickCounter + BLOCK_COOLDOWN_TICKS);
+    }
+
+    public static int dashLeft(UUID id) {
+        Long until = dashCd.get(id);
+        return until == null ? 0 : (int) Math.max(0L, until - tickCounter);
+    }
+
+    public static int blockLeft(UUID id) {
+        Long until = blockCd.get(id);
+        return until == null ? 0 : (int) Math.max(0L, until - tickCounter);
+    }
+
+    /** Wie weit (bis max. wanted) ist der Weg in Richtung (hx, hz) frei? Stufen bis 0,6 Bloecke zaehlen als frei. */
+    private static double freeDistance(ServerLevel level, ServerPlayer p, double hx, double hz, double wanted) {
+        AABB base = p.getBoundingBox();
+        double free = 0.0;
+        for (double d = 0.25; d <= wanted + 1.0E-9; d += 0.25) {
+            AABB box = base.move(hx * d, 0.0, hz * d);
+            AABB up = base.move(hx * d, 0.6, hz * d);
+            if (!level.noCollision(p, box) && !level.noCollision(p, up)) {
+                break;
+            }
+            free = d;
+        }
+        return free;
+    }
+
+    /** Dash in Blickrichtung (horizontal, auch im Lauf oder Sprung), 8 Bloecke. Gibt true zurueck, wenn der Dash startete. */
     public static boolean dash(ServerPlayer p) {
         ServerLevel level = (ServerLevel) p.level();
         MinecraftServer server = level.getServer();
@@ -290,56 +346,64 @@ public final class CombatAbilities {
             hz /= len;
         }
 
-        AABB base = p.getBoundingBox();
-        double step = 0.25;
-        double travelled = 0.0;
-        double yOffset = 0.0;
-        LivingEntity hit = null;
-
-        while (travelled + step <= DASH_DISTANCE + 1.0E-9) {
-            double next = travelled + step;
-            AABB box = base.move(hx * next, yOffset, hz * next);
-            if (!level.noCollision(p, box)) {
-                // eine Stufe (1 Block) hochsteigen, falls moeglich
-                AABB up = base.move(hx * next, yOffset + 1.0, hz * next);
-                if (yOffset == 0.0 && level.noCollision(p, up)) {
-                    yOffset = 1.0;
-                    box = up;
-                } else {
-                    break;
-                }
-            }
-            List<LivingEntity> found = level.getEntitiesOfClass(LivingEntity.class, box.inflate(0.2),
-                    e -> validDashTarget(p, e));
-            if (!found.isEmpty()) {
-                hit = found.get(0);
-                break;
-            }
-            travelled = next;
-        }
-
-        if (travelled < 0.5 && hit == null) {
+        if (freeDistance(level, p, hx, hz, 1.0) < 0.5) {
             p.sendSystemMessage(Component.literal("Kein Platz fuer den Dash."));
             return false;
         }
 
+        dashing.put(p.getUUID(), new DashState(hx, hz, p.getX(), p.getZ()));
+        markDashCooldown(p.getUUID());
         Cmd.at(server, p.getUUID(),
                 "playsound minecraft:item.trident.riptide_1 player @a ~ ~ ~ 1.0 1.3",
+                "playsound minecraft:entity.phantom.flap player @a ~ ~ ~ 0.8 1.6",
                 "particle minecraft:cloud ~ ~0.2 ~ 0.3 0.1 0.3 0.05 15",
                 "particle minecraft:sweep_attack ~ ~1 ~ 0.3 0.2 0.3 0 3");
-
-        p.teleportTo(p.getX() + hx * travelled, p.getY() + yOffset, p.getZ() + hz * travelled);
-        p.fallDistance = 0;
-
-        Cmd.at(server, p.getUUID(),
-                "playsound minecraft:entity.phantom.flap player @a ~ ~ ~ 0.8 1.6",
-                "particle minecraft:dust{color:[0.5,0.1,0.8],scale:1.0} ~ ~1 ~ 0.25 0.4 0.25 0 12",
-                "particle minecraft:large_smoke ~ ~0.9 ~ 0.2 0.3 0.2 0.01 3");
-
-        if (hit != null) {
-            dashHit(server, p, hit);
-        }
+        stepDash(server, p, dashing.get(p.getUUID()));
         return true;
+    }
+
+    /** Ein Dash-Schritt: Geschwindigkeit setzen, Treffer pruefen. Gibt false zurueck, wenn der Dash vorbei ist. */
+    private static boolean stepDash(MinecraftServer server, ServerPlayer p, DashState st) {
+        ServerLevel level = (ServerLevel) p.level();
+        st.ticks++;
+        double travelled = Math.hypot(p.getX() - st.startX, p.getZ() - st.startZ);
+        double remaining = DASH_DISTANCE - travelled;
+
+        // Treffer: Gegner im Weg (grosszuegige Box wie beim Original)
+        AABB box = new AABB(p.getX() - 1.3, p.getY() - 0.3, p.getZ() - 1.3,
+                p.getX() + 1.3, p.getY() + 2.1, p.getZ() + 1.3);
+        for (LivingEntity e : level.getEntitiesOfClass(LivingEntity.class, box, x -> validDashTarget(p, x))) {
+            p.setDeltaMovement(0.0, 0.0, 0.0);
+            p.hurtMarked = true;
+            dashHit(server, p, e);
+            return false;
+        }
+
+        double free = freeDistance(level, p, st.hx, st.hz, Math.min(DASH_SPEED, Math.max(remaining, 0.0)) + 0.25);
+        if (remaining <= 0.1 || free < 0.2 || st.ticks > DASH_MAX_TICKS) {
+            p.setDeltaMovement(0.0, 0.0, 0.0);
+            p.hurtMarked = true;
+            return false;
+        }
+        double v = Math.min(DASH_SPEED, Math.min(remaining, free));
+        p.setDeltaMovement(st.hx * v, p.onGround() ? 0.1 : 0.0, st.hz * v);
+        p.hurtMarked = true;
+        p.fallDistance = 0;
+        Cmd.at(server, p.getUUID(),
+                "particle minecraft:dust{color:[0.5,0.1,0.8],scale:1.0} ~ ~1 ~ 0.25 0.4 0.25 0 6",
+                "particle minecraft:large_smoke ~ ~0.9 ~ 0.2 0.3 0.2 0.01 3");
+        return true;
+    }
+
+    private static void dashTick(MinecraftServer server) {
+        if (dashing.isEmpty()) return;
+        for (UUID id : new ArrayList<>(dashing.keySet())) {
+            ServerPlayer p = server.getPlayerList().getPlayer(id);
+            DashState st = dashing.get(id);
+            if (p == null || !p.isAlive() || st == null || !stepDash(server, p, st)) {
+                dashing.remove(id);
+            }
+        }
     }
 
     private static void dashHit(MinecraftServer server, ServerPlayer p, LivingEntity target) {
@@ -499,10 +563,7 @@ public final class CombatAbilities {
                 return false;
             }
             if (attacker != null && attacker != victim) {
-                // Teammates koennen sich nicht schlagen und loesen keinen Combat-Timer aus
-                if (TeamManager.sameTeam(attacker, victim)) {
-                    return false;
-                }
+                // Teammates duerfen sich schlagen (Kill = 24 h Bann, siehe ClassKitsMod.onPlayerKill)
                 CombatTimer.tag(attacker, victim);
             }
 
@@ -611,10 +672,12 @@ public final class CombatAbilities {
         markAttacker.keySet().removeIf(k -> !markTime.containsKey(k));
 
         tickAura(server);
+        dashTick(server);
         CombatTimer.tick(server);
         CooldownHud.tick(server);
         MaxedEffect.tick(server);
         AirDrop.tick(server);
+        BackpackItem.tick(server);
         KillStreak.tick(server);
         ClassKitsMod.tickRestore(server);
         ClassKitsMod.tickItems(server);
@@ -661,5 +724,6 @@ public final class CombatAbilities {
         riposteReady.remove(id);
         stunned.remove(id);
         aura.remove(id);
+        dashing.remove(id);
     }
 }
