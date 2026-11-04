@@ -38,7 +38,8 @@ import java.util.UUID;
 public final class ClassKitsMod implements ModInitializer {
     public static final String MOD_ID = "classkits";
 
-    public static final Item BLOCK = register("block", new BlockKitItem(itemProperties("block", "Block")));
+    public static final Item BLOCK = register("block", new BlockKitItem(itemProperties("block", "Block")
+                    .component(DataComponents.BLOCKS_ATTACKS, BlockKitItem.shieldComponent())));
     public static final Item DAGGER = register("dagger",
             new DaggerKitItem(itemProperties("dagger", "Dolch").attributes(DaggerKitItem.baseAttributes())));
     public static final Item HAMMER = register("hammer",
@@ -139,6 +140,8 @@ public final class ClassKitsMod implements ModInitializer {
             TempBan.registerCommand(dispatcher);
             PlayTime.registerCommand(dispatcher);
             StatsMenu.registerCommand(dispatcher);
+            HelpCommand.register(dispatcher);
+            KnockbackCommand.register(dispatcher);
         });
     }
 
@@ -248,10 +251,6 @@ public final class ClassKitsMod implements ModInitializer {
         MinecraftServer server = attacker.level().getServer();
         if (levelUp) {
             onLevelUp(attacker, e);
-        }
-        if (e.kit() == Kit.DAGGER && e.level() >= 4) {
-            attacker.setHealth(attacker.getMaxHealth());
-            Cmd.at(server, attacker.getUUID(), "particle minecraft:heart ~ ~1.5 ~ 0.4 0.3 0.4 0 8");
         }
     }
 

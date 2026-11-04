@@ -42,7 +42,7 @@ import java.util.UUID;
 public final class CombatAbilities {
     // --- Werte (hier kann man alles schnell anpassen) ---
     public static final int BLOCK_COOLDOWN_TICKS = 600;      // 30 s
-    public static final int DASH_COOLDOWN_TICKS = 400;       // 20 s
+    public static final int DASH_COOLDOWN_TICKS = 550;       // 27,5 s
     public static final double DASH_DISTANCE = 8.0;          // Bloecke
     public static final float BLOCK_HEAL = 4.0F;             // ab Level 3 (2 Herzen)
     public static final int RIPOSTE_TICKS = 100;             // 5 s Zeit fuer den Punch
@@ -75,6 +75,8 @@ public final class CombatAbilities {
 
     private static final Identifier SPEED_ID = Identifier.fromNamespaceAndPath("classkits", "dagger_speed");
     private static final Identifier DAMAGE_ID = Identifier.fromNamespaceAndPath("classkits", "dagger_damage");
+    private static final Identifier BLOCK_DAMAGE_ID = Identifier.fromNamespaceAndPath("classkits", "block_damage");
+    public static final String NO_KNOCKBACK_TAG = "classkits_noknockback";
     private static final Identifier HAMMER_DAMAGE_ID = Identifier.fromNamespaceAndPath("classkits", "hammer_damage");
 
     private CombatAbilities() {
@@ -86,7 +88,8 @@ public final class CombatAbilities {
             if (world.isClientSide() || !(player instanceof ServerPlayer sp) || !(entity instanceof LivingEntity target)) {
                 return InteractionResult.PASS;
             }
-            if (sp.getItemInHand(hand).is(ClassKitsMod.BLOCK) && riposteReady.containsKey(sp.getUUID())) {
+            if ((sp.getMainHandItem().is(ClassKitsMod.BLOCK) || sp.getOffhandItem().is(ClassKitsMod.BLOCK))
+                    && riposteReady.containsKey(sp.getUUID())) {
                 riposteReady.remove(sp.getUUID());
                 punch(sp, target);
                 return InteractionResult.FAIL;
@@ -237,8 +240,10 @@ public final class CombatAbilities {
         double kb = punchKnockback(level);
 
         target.hurtServer(sl, sl.damageSources().playerAttack(p), 8.0F);
-        target.setDeltaMovement(dx * kb, level >= 4 ? 0.45 : 0.35, dz * kb);
-        target.hurtMarked = true;
+        if (!p.getTags().contains(NO_KNOCKBACK_TAG)) {
+            target.setDeltaMovement(dx * kb, level >= 4 ? 0.45 : 0.35, dz * kb);
+            target.hurtMarked = true;
+        }
         target.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 160, 0), p);
         // Block Level 4: der Gegenschlag friert Spieler 2 Sekunden ein
         if (level >= 4 && target instanceof ServerPlayer tp) {
@@ -353,6 +358,7 @@ public final class CombatAbilities {
 
         dashing.put(p.getUUID(), new DashState(hx, hz, p.getX(), p.getZ()));
         markDashCooldown(p.getUUID());
+        p.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 60, 2, false, true, true));
         Cmd.at(server, p.getUUID(),
                 "playsound minecraft:item.trident.riptide_1 player @a ~ ~ ~ 1.0 1.3",
                 "playsound minecraft:entity.phantom.flap player @a ~ ~ ~ 0.8 1.6",
@@ -538,8 +544,10 @@ public final class CombatAbilities {
                 dz = 1;
                 len = 1;
             }
-            t.setDeltaMovement(dx / len * 1.3, 0.6, dz / len * 1.3);
-            t.hurtMarked = true;
+            if (!p.getTags().contains(NO_KNOCKBACK_TAG)) {
+                t.setDeltaMovement(dx / len * 1.3, 0.6, dz / len * 1.3);
+                t.hurtMarked = true;
+            }
         }
         Cmd.at(server, p.getUUID(),
                 "playsound minecraft:item.mace.smash_ground player @a ~ ~ ~ 1.2 0.8",
@@ -551,6 +559,19 @@ public final class CombatAbilities {
     // ------------------------------------------------------------------
     // Schaden
     // ------------------------------------------------------------------
+
+    /** Deaktiviert das Schild des Opfers (normales Schild und Block-Schutz), wie ein Axt-Treffer. */
+    private static void breakShield(ServerPlayer victim) {
+        if (victim.isBlocking()) {
+            ItemStack used = victim.getUseItem();
+            victim.getCooldowns().addCooldown(used, 100);
+            victim.stopUsingItem();
+            victim.level().broadcastEntityEvent(victim, (byte) 30);
+        }
+        if (guarding.remove(victim.getUUID()) != null) {
+            victim.sendSystemMessage(Component.literal("Dein Block wurde gebrochen!"));
+        }
+    }
 
     private static boolean allowDamage(LivingEntity entity, DamageSource source, float amount) {
         Entity attackerEntity = source.getEntity();
@@ -565,6 +586,13 @@ public final class CombatAbilities {
             if (attacker != null && attacker != victim) {
                 // Teammates duerfen sich schlagen (Kill = 24 h Bann, siehe ClassKitsMod.onPlayerKill)
                 CombatTimer.tag(attacker, victim);
+            }
+
+            // Hammer Level 3: bricht Schilde wie eine Axt
+            if (attacker != null && attacker != victim && source.is(DamageTypes.PLAYER_ATTACK)
+                    && attacker.getMainHandItem().is(ClassKitsMod.HAMMER)
+                    && levelFor(attacker, Kit.HAMMER) >= 3) {
+                breakShield(victim);
             }
 
             // Block faengt Treffer von Entities ab
@@ -628,6 +656,14 @@ public final class CombatAbilities {
                     AttributeModifier.Operation.ADD_MULTIPLIED_BASE, dagger && e.level() >= 2);
             setModifier(p, Attributes.ATTACK_DAMAGE, DAMAGE_ID, 2.0,
                     AttributeModifier.Operation.ADD_VALUE, dagger && e.level() >= 5);
+
+            // Block: Schild in der Zweithand gibt Bonus-Schaden (Level 3: +1, ab Level 4: +2)
+            double blockBonus = 0.0;
+            if (e != null && e.kit() == Kit.BLOCK && p.getOffhandItem().is(ClassKitsMod.BLOCK)) {
+                blockBonus = e.level() >= 4 ? 2.0 : e.level() >= 3 ? 1.0 : 0.0;
+            }
+            setModifier(p, Attributes.ATTACK_DAMAGE, BLOCK_DAMAGE_ID, blockBonus,
+                    AttributeModifier.Operation.ADD_VALUE, blockBonus > 0.0);
 
             // Hammer: Schaden 4 -> 5 -> 6 -> 6 -> 9 (Bonus auf die Basis von 4)
             boolean hammer = e != null && e.kit() == Kit.HAMMER && main.is(ClassKitsMod.HAMMER);

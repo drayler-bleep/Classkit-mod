@@ -25,11 +25,30 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-/** Jeder Spieler hat pro Tag 1 Stunde Spielzeit, danach ist er bis 0 Uhr (Europe/Berlin) gesperrt. */
+/** Spielzeit-Budget: Mo-Fr zusammen 3 Stunden, Sa+So zusammen 1 Stunde (Europe/Berlin). Danach gesperrt bis zur naechsten Phase. */
 public final class PlayTime {
     private static final Logger LOGGER = LoggerFactory.getLogger("classkits");
     private static final ZoneId ZONE = ZoneId.of("Europe/Berlin");
-    private static final int LIMIT_SECONDS = 60 * 60;
+    private static final int WEEKDAY_LIMIT = 3 * 60 * 60;
+    private static final int WEEKEND_LIMIT = 60 * 60;
+
+    private static boolean weekend() {
+        java.time.DayOfWeek d = LocalDate.now(ZONE).getDayOfWeek();
+        return d == java.time.DayOfWeek.SATURDAY || d == java.time.DayOfWeek.SUNDAY;
+    }
+
+    private static int limit() {
+        return weekend() ? WEEKEND_LIMIT : WEEKDAY_LIMIT;
+    }
+
+    /** Schluessel der aktuellen Phase: Werkwoche (Montag) oder Wochenende (Samstag). */
+    private static String periodKey() {
+        LocalDate today = LocalDate.now(ZONE);
+        if (weekend()) {
+            return "E" + (today.getDayOfWeek() == java.time.DayOfWeek.SUNDAY ? today.minusDays(1) : today);
+        }
+        return "W" + today.minusDays(today.getDayOfWeek().getValue() - 1L);
+    }
 
     private static final Map<UUID, Integer> used = new HashMap<>();
     private static final Map<UUID, String> names = new HashMap<>();
@@ -79,7 +98,7 @@ public final class PlayTime {
     }
 
     private static void checkDay() {
-        String today = LocalDate.now(ZONE).toString();
+        String today = periodKey();
         if (!today.equals(day)) {
             day = today;
             used.clear();
@@ -97,7 +116,7 @@ public final class PlayTime {
     public static boolean blockOnJoin(ServerPlayer p) {
         checkDay();
         names.put(p.getUUID(), p.getName().getString());
-        if (used.getOrDefault(p.getUUID(), 0) >= LIMIT_SECONDS) {
+        if (used.getOrDefault(p.getUUID(), 0) >= limit()) {
             p.connection.disconnect(limitMessage());
             return true;
         }
@@ -105,7 +124,10 @@ public final class PlayTime {
     }
 
     private static Component limitMessage() {
-        return Component.literal("Deine Spielzeit für heute (1 Stunde) ist aufgebraucht.\nDu kannst ab 0 Uhr wieder spielen.")
+        String text = weekend()
+                ? "Deine Spielzeit für dieses Wochenende (1 Stunde) ist aufgebraucht.\nDu kannst ab Montag 0 Uhr wieder spielen."
+                : "Deine Spielzeit für diese Werkwoche (3 Stunden) ist aufgebraucht.\nDu kannst ab Samstag 0 Uhr wieder spielen.";
+        return Component.literal(text)
                 .withStyle(ChatFormatting.RED);
     }
 
@@ -116,13 +138,13 @@ public final class PlayTime {
             UUID id = p.getUUID();
             names.put(id, p.getName().getString());
             int u = used.merge(id, 1, Integer::sum);
-            int left = LIMIT_SECONDS - u;
+            int left = limit() - u;
             if (left <= 0) {
                 save();
                 p.connection.disconnect(limitMessage());
             } else if (left == 600 || left == 300 || left == 60 || left == 10) {
                 String t = left >= 60 ? (left / 60) + " Minuten" : left + " Sekunden";
-                p.sendSystemMessage(Component.literal("Noch " + t + " Spielzeit für heute.").withStyle(ChatFormatting.YELLOW));
+                p.sendSystemMessage(Component.literal("Noch " + t + " Spielzeit für " + (weekend() ? "dieses Wochenende." : "diese Werkwoche.")).withStyle(ChatFormatting.YELLOW));
             }
         }
         if (counter % 1200 == 0) save();
@@ -131,7 +153,7 @@ public final class PlayTime {
     /** Verbleibende Sekunden heute. */
     public static int secondsLeft(UUID id) {
         checkDay();
-        return Math.max(0, LIMIT_SECONDS - used.getOrDefault(id, 0));
+        return Math.max(0, limit() - used.getOrDefault(id, 0));
     }
 
     public static int secondsUsed(UUID id) {
@@ -142,7 +164,7 @@ public final class PlayTime {
     private static int showLeft(com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
         ServerPlayer p = ctx.getSource().getPlayerOrException();
         int left = secondsLeft(p.getUUID());
-        p.sendSystemMessage(Component.literal("Verbleibende Spielzeit heute: " + (left / 60) + " min "
+        p.sendSystemMessage(Component.literal("Verbleibende Spielzeit (" + (weekend() ? "Wochenende" : "Werkwoche") + "): " + (left / 60) + " min "
                 + (left % 60) + " s").withStyle(ChatFormatting.GREEN));
         return 1;
     }

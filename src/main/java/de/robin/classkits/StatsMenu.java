@@ -75,8 +75,8 @@ public final class StatsMenu {
                 kills + " Spieler-Kills"));
         c.setItem(15, icon(new ItemStack(Items.CLOCK), "Spielzeit", ChatFormatting.GOLD,
                 "Gesamt: " + time(totalSeconds),
-                "Heute gespielt: " + time(PlayTime.secondsUsed(p.getUUID())),
-                "Heute noch übrig: " + time(PlayTime.secondsLeft(p.getUUID()))));
+                "Diese Phase gespielt: " + time(PlayTime.secondsUsed(p.getUUID())),
+                "Noch übrig (Werkwoche/Wochenende): " + time(PlayTime.secondsLeft(p.getUUID()))));
 
         p.openMenu(new SimpleMenuProvider((id, inv, pl) -> new ReadOnlyMenu(id, inv, c),
                 Component.literal("Statistiken")));
